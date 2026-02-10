@@ -1,0 +1,301 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { normalizeGameCode } from "@/lib/codes";
+import { createClient } from "@/lib/supabase/client";
+
+type Prompt = {
+  id: string;
+  kind: "multiple_choice" | "over_under";
+  question: string;
+  state: string;
+  locks_at: string | null;
+  over_under_line: number | null;
+};
+
+type Option = { id: string; label: string };
+
+type Play = {
+  PlayID: number;
+  QuarterName: string;
+  Sequence: number;
+  TimeRemainingMinutes: number;
+  TimeRemainingSeconds: number;
+  Description: string;
+  AwayTeamScore: number;
+  HomeTeamScore: number;
+};
+
+export default function PatronGamePage({ params }: { params: { code: string } }) {
+  const supabase = useMemo(() => createClient(), []);
+  const code = normalizeGameCode(params.code);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [gameNight, setGameNight] = useState<{
+    id: string;
+    code: string;
+    title: string | null;
+    sport: string;
+    sportsdataio_game_id: number | null;
+  } | null>(null);
+
+  const [prompt, setPrompt] = useState<Prompt | null>(null);
+  const [options, setOptions] = useState<Option[]>([]);
+
+  const [selectedOptionId, setSelectedOptionId] = useState<string>("");
+  const [numericValue, setNumericValue] = useState<string>("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const [pbp, setPbp] = useState<{
+    Game?: {
+      AwayTeam: string;
+      HomeTeam: string;
+      Status: string;
+      Quarter: string;
+      AwayTeamScore: number;
+      HomeTeamScore: number;
+      TimeRemainingMinutes: number;
+      TimeRemainingSeconds: number;
+      LastPlay: string;
+    };
+    Plays?: Play[];
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+
+      const gn = await supabase
+        .from("game_nights")
+        .select("id,code,title,sport,sportsdataio_game_id")
+        .eq("code", code)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (gn.error) {
+        setError(gn.error.message);
+        setLoading(false);
+        return;
+      }
+
+      setGameNight(gn.data);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code, supabase]);
+
+  useEffect(() => {
+    if (!gameNight?.id) return;
+
+    const gnId = gameNight.id;
+    const sdGameId = gameNight.sportsdataio_game_id;
+    let cancelled = false;
+
+    async function load() {
+      // Current prompt = most recent
+      const pr = await supabase
+        .from("prompts")
+        .select("id,kind,question,state,locks_at,over_under_line,created_at")
+        .eq("game_night_id", gnId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (pr.error) {
+        setError(pr.error.message);
+        return;
+      }
+
+      setPrompt(pr.data as Prompt | null);
+      setSubmitted(false);
+      setSelectedOptionId("");
+      setNumericValue("");
+
+      if (pr.data?.kind === "multiple_choice") {
+        const opt = await supabase
+          .from("prompt_options")
+          .select("id,label")
+          .eq("prompt_id", pr.data.id)
+          .order("created_at", { ascending: true });
+
+        if (!cancelled) setOptions(opt.data ?? []);
+      } else {
+        setOptions([]);
+      }
+
+      // Play-by-play (optional)
+      if (sdGameId) {
+        const res = await fetch(
+          `/api/sportsdataio/replay/nba/pbp/${sdGameId}`,
+          { cache: "no-store" },
+        );
+        const json = await res.json();
+        if (!cancelled) setPbp(json);
+      }
+    }
+
+    load();
+    const id = setInterval(load, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [gameNight?.id, gameNight?.sportsdataio_game_id, supabase]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!prompt?.id) return;
+
+    const patronId = localStorage.getItem(`patron:${code}:id`);
+    if (!patronId) {
+      setError("Missing patron session. Re-join the game.");
+      return;
+    }
+
+    if (prompt.kind === "multiple_choice" && !selectedOptionId) {
+      setError("Pick an option.");
+      return;
+    }
+
+    if (prompt.kind === "over_under" && !numericValue.trim()) {
+      setError("Enter a number.");
+      return;
+    }
+
+    const insert = await supabase.from("submissions").insert({
+      prompt_id: prompt.id,
+      patron_id: patronId,
+      option_id: prompt.kind === "multiple_choice" ? selectedOptionId : null,
+      numeric_value: prompt.kind === "over_under" ? Number(numericValue) : null,
+    });
+
+    if (insert.error) {
+      setError(insert.error.message);
+      return;
+    }
+
+    setSubmitted(true);
+  }
+
+  if (loading) return <div className="p-6">Loading…</div>;
+
+  if (!gameNight) {
+    return (
+      <div className="p-6">
+        <div className="text-xl font-semibold">Game not found</div>
+        <div className="text-sm text-neutral-600">
+          Join code <code>{code}</code> not found.
+        </div>
+      </div>
+    );
+  }
+
+  const plays: Play[] = pbp?.Plays ?? [];
+  const lastPlays = plays.slice(-12).reverse();
+  const game = pbp?.Game;
+
+  return (
+    <div className="mx-auto max-w-3xl p-6 space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold">
+          {gameNight.title ?? "Game Night"} — <code>{gameNight.code}</code>
+        </h1>
+        <div className="text-sm text-neutral-600">{gameNight.sport}</div>
+      </div>
+
+      {game ? (
+        <div className="rounded border p-4">
+          <div className="font-medium">
+            {game.AwayTeam} @ {game.HomeTeam}
+          </div>
+          <div className="text-sm text-neutral-600">
+            {game.Status} — Q{game.Quarter} — {game.AwayTeamScore} :{" "}
+            {game.HomeTeamScore} — {game.TimeRemainingMinutes}:
+            {String(game.TimeRemainingSeconds).padStart(2, "0")}
+          </div>
+          <div className="text-sm mt-2">LastPlay: {game.LastPlay}</div>
+        </div>
+      ) : null}
+
+      <div className="rounded border p-4 space-y-3">
+        <div className="font-semibold">Current prompt</div>
+        {!prompt ? (
+          <div className="text-sm text-neutral-600">No prompt yet.</div>
+        ) : (
+          <>
+            <div className="text-sm text-neutral-600">{prompt.state}</div>
+            <div className="font-medium">{prompt.question}</div>
+
+            {prompt.kind === "over_under" ? (
+              <div className="text-sm">Line: {prompt.over_under_line}</div>
+            ) : null}
+
+            <form onSubmit={submit} className="space-y-2">
+              {prompt.kind === "multiple_choice" ? (
+                <div className="space-y-2">
+                  {options.map((o) => (
+                    <label key={o.id} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="opt"
+                        value={o.id}
+                        checked={selectedOptionId === o.id}
+                        onChange={() => setSelectedOptionId(o.id)}
+                      />
+                      <span>{o.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <input
+                  value={numericValue}
+                  onChange={(e) => setNumericValue(e.target.value)}
+                  placeholder="Enter your number"
+                  className="w-full rounded border px-3 py-2"
+                />
+              )}
+
+              <button
+                disabled={submitted}
+                className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+              >
+                {submitted ? "Submitted" : "Submit"}
+              </button>
+
+              {error ? <div className="text-sm text-red-700">{error}</div> : null}
+            </form>
+          </>
+        )}
+      </div>
+
+      <div className="rounded border p-4 space-y-2">
+        <div className="font-semibold">Play-by-play</div>
+        <ul className="space-y-2">
+          {lastPlays.map((p) => (
+            <li key={p.PlayID} className="text-sm">
+              <span className="text-xs text-neutral-600">
+                Q{p.QuarterName} {p.TimeRemainingMinutes}:
+                {String(p.TimeRemainingSeconds).padStart(2, "0")} —
+              </span>{" "}
+              {p.Description}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
