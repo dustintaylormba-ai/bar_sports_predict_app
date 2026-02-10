@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { normalizeGameCode } from "@/lib/codes";
 import { createClient } from "@/lib/supabase/client";
 
-export default function JoinPage({ params }: { params: { code: string } }) {
+export default function JoinPage() {
   const router = useRouter();
+  const params = useParams<{ code: string }>();
   const supabase = useMemo(() => createClient(), []);
-  const code = normalizeGameCode(params.code);
+  const code = normalizeGameCode(params?.code);
 
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 
 import { normalizeGameCode } from "@/lib/codes";
 import { createClient } from "@/lib/supabase/client";
@@ -27,9 +28,10 @@ type Play = {
   HomeTeamScore: number;
 };
 
-export default function PatronGamePage({ params }: { params: { code: string } }) {
+export default function PatronGamePage() {
   const supabase = useMemo(() => createClient(), []);
-  const code = normalizeGameCode(params.code);
+  const params = useParams<{ code: string }>();
+  const code = normalizeGameCode(params?.code);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
