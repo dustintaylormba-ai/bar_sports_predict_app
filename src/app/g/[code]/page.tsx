@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { normalizeGameCode } from "@/lib/codes";
@@ -47,8 +47,9 @@ export default function PatronGamePage() {
   const [options, setOptions] = useState<Option[]>([]);
 
   const [selectedOptionId, setSelectedOptionId] = useState<string>("");
-  const [numericValue, setNumericValue] = useState<string>("");
   const [submitted, setSubmitted] = useState(false);
+
+  const lastPromptIdRef = useRef<string | null>(null);
 
   const [pbp, setPbp] = useState<{
     Game?: {
@@ -119,16 +120,23 @@ export default function PatronGamePage() {
         return;
       }
 
-      setPrompt(pr.data as Prompt | null);
-      setSubmitted(false);
-      setSelectedOptionId("");
-      setNumericValue("");
+      const nextPrompt = pr.data as Prompt | null;
+      setPrompt(nextPrompt);
 
-      if (pr.data?.kind === "multiple_choice") {
+      // Only reset local input state when the prompt changes.
+      const nextId = nextPrompt?.id ?? null;
+      const changed = nextId !== lastPromptIdRef.current;
+      if (changed) {
+        lastPromptIdRef.current = nextId;
+        setSubmitted(false);
+        setSelectedOptionId("");
+      }
+
+      if (nextPrompt?.id) {
         const opt = await supabase
           .from("prompt_options")
           .select("id,label")
-          .eq("prompt_id", pr.data.id)
+          .eq("prompt_id", nextPrompt.id)
           .order("created_at", { ascending: true });
 
         if (!cancelled) setOptions(opt.data ?? []);
@@ -173,16 +181,16 @@ export default function PatronGamePage() {
       return;
     }
 
-    if (prompt.kind === "over_under" && !numericValue.trim()) {
-      setError("Enter a number.");
+    if (!selectedOptionId) {
+      setError("Pick an option.");
       return;
     }
 
     const insert = await supabase.from("submissions").insert({
       prompt_id: prompt.id,
       patron_id: patronId,
-      option_id: prompt.kind === "multiple_choice" ? selectedOptionId : null,
-      numeric_value: prompt.kind === "over_under" ? Number(numericValue) : null,
+      option_id: selectedOptionId,
+      numeric_value: null,
     });
 
     if (insert.error) {
@@ -247,29 +255,20 @@ export default function PatronGamePage() {
             ) : null}
 
             <form onSubmit={submit} className="space-y-2">
-              {prompt.kind === "multiple_choice" ? (
-                <div className="space-y-2">
-                  {options.map((o) => (
-                    <label key={o.id} className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="opt"
-                        value={o.id}
-                        checked={selectedOptionId === o.id}
-                        onChange={() => setSelectedOptionId(o.id)}
-                      />
-                      <span>{o.label}</span>
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <input
-                  value={numericValue}
-                  onChange={(e) => setNumericValue(e.target.value)}
-                  placeholder="Enter your number"
-                  className="w-full rounded border px-3 py-2"
-                />
-              )}
+              <div className="space-y-2">
+                {options.map((o) => (
+                  <label key={o.id} className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="opt"
+                      value={o.id}
+                      checked={selectedOptionId === o.id}
+                      onChange={() => setSelectedOptionId(o.id)}
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                ))}
+              </div>
 
               <button
                 disabled={submitted}

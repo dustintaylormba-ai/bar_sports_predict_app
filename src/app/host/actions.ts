@@ -124,6 +124,15 @@ export async function createPrompt(params: {
     if (error) throw error;
   }
 
+  if (params.kind === "over_under") {
+    // For v1, over/under prompts are a binary choice.
+    const { error } = await supabase.from("prompt_options").insert([
+      { prompt_id: prompt.id, label: "Over" },
+      { prompt_id: prompt.id, label: "Under" },
+    ]);
+    if (error) throw error;
+  }
+
   revalidatePath(`/host/game-night/${params.gameNightId}`);
   return prompt;
 }
