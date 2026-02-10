@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { createPrompt, lockPrompt, openPrompt } from "@/app/host/actions";
+import { createPrompt, lockPrompt, openPrompt, resolvePrompt } from "@/app/host/actions";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function HostGameNightPage({
@@ -71,6 +71,14 @@ export default async function HostGameNightPage({
   const prompts = promptsRes.data ?? [];
   const current = prompts[0] ?? null;
 
+  const currentOptions = current
+    ? await supabase
+        .from("prompt_options")
+        .select("id,label")
+        .eq("prompt_id", current.id)
+        .order("created_at", { ascending: true })
+    : null;
+
   async function createMc(formData: FormData) {
     "use server";
     const question = String(formData.get("question") ?? "");
@@ -111,6 +119,13 @@ export default async function HostGameNightPage({
     "use server";
     const promptId = String(formData.get("promptId") ?? "");
     await lockPrompt(promptId);
+  }
+
+  async function resolve(formData: FormData) {
+    "use server";
+    const promptId = String(formData.get("promptId") ?? "");
+    const correctOptionId = String(formData.get("correctOptionId") ?? "");
+    await resolvePrompt({ promptId, correctOptionId });
   }
 
   return (
@@ -210,6 +225,29 @@ export default async function HostGameNightPage({
                   Lock
                 </button>
               </form>
+
+              {currentOptions?.data?.length ? (
+                <form action={resolve} className="space-y-2">
+                  <input type="hidden" name="promptId" value={current.id} />
+                  <label className="block text-xs text-neutral-600">
+                    Correct answer
+                  </label>
+                  <select
+                    name="correctOptionId"
+                    className="w-full rounded border px-3 py-2"
+                    defaultValue={currentOptions.data[0].id}
+                  >
+                    {currentOptions.data.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="rounded bg-green-700 px-3 py-2 text-white">
+                    Resolve + score
+                  </button>
+                </form>
+              ) : null}
             </div>
           ) : (
             <div className="text-sm text-neutral-600">No prompts yet.</div>

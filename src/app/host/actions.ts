@@ -170,3 +170,148 @@ export async function lockPrompt(promptId: string) {
 
   revalidatePath("/host");
 }
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function computeSpeedPoints(args: {
+  submittedAt: string;
+  opensAt: string;
+  locksAt: string;
+  minPoints: number;
+  maxPoints: number;
+}) {
+  const t0 = new Date(args.opensAt).getTime();
+  const t1 = new Date(args.locksAt).getTime();
+  const ts = new Date(args.submittedAt).getTime();
+
+  if (!Number.isFinite(t0) || !Number.isFinite(t1) || !Number.isFinite(ts)) {
+    return args.minPoints;
+  }
+
+  const denom = t1 - t0;
+  if (denom <= 0) return args.minPoints;
+
+  const frac = clamp((ts - t0) / denom, 0, 1);
+  const raw = args.maxPoints - (args.maxPoints - args.minPoints) * frac;
+  // Round to nearest int
+  return clamp(Math.round(raw), args.minPoints, args.maxPoints);
+}
+
+export async function resolvePrompt(params: {
+  promptId: string;
+  correctOptionId: string;
+}) {
+  const { supabase, user } = await requireAuthedSupabase();
+
+  // Load prompt details
+  const promptRes = await supabase
+    .from("prompts")
+    .select("id,game_night_id,kind,state,opens_at,locks_at")
+    .eq("id", params.promptId)
+    .single();
+
+  if (promptRes.error) throw promptRes.error;
+  const prompt = promptRes.data;
+
+  // Upsert resolution record (unique on prompt_id)
+  const resInsert = await supabase.from("prompt_resolutions").upsert(
+    {
+      prompt_id: prompt.id,
+      resolved_by_user_id: user.id,
+      correct_option_id: params.correctOptionId,
+      over_under_result: null,
+    },
+    { onConflict: "prompt_id" },
+  );
+  if (resInsert.error) throw resInsert.error;
+
+  // Mark prompt resolved
+  const { error: updErr } = await supabase
+    .from("prompts")
+    .update({ state: "resolved", resolved_at: new Date().toISOString() })
+    .eq("id", prompt.id);
+  if (updErr) throw updErr;
+
+  // Fetch patrons + submissions for this prompt
+  const patronsRes = await supabase
+    .from("patrons")
+    .select("id")
+    .eq("game_night_id", prompt.game_night_id);
+  if (patronsRes.error) throw patronsRes.error;
+
+  const subsRes = await supabase
+    .from("submissions")
+    .select("patron_id,option_id,created_at")
+    .eq("prompt_id", prompt.id);
+  if (subsRes.error) throw subsRes.error;
+
+  const subsByPatron = new Map<
+    string,
+    { option_id: string | null; created_at: string }
+  >();
+  for (const s of subsRes.data ?? []) {
+    subsByPatron.set(s.patron_id, { option_id: s.option_id, created_at: s.created_at });
+  }
+
+  const opensAt = prompt.opens_at;
+  const locksAt = prompt.locks_at;
+
+  const scoreRows: Array<{
+    prompt_id: string;
+    game_night_id: string;
+    patron_id: string;
+    points: number;
+    reason: string;
+  }> = [];
+
+  for (const p of patronsRes.data ?? []) {
+    const sub = subsByPatron.get(p.id);
+    if (!sub) {
+      // No answer → 0 points (we omit row)
+      continue;
+    }
+
+    const correct = sub.option_id === params.correctOptionId;
+
+    if (!correct) {
+      scoreRows.push({
+        prompt_id: prompt.id,
+        game_night_id: prompt.game_night_id,
+        patron_id: p.id,
+        points: 2,
+        reason: "incorrect",
+      });
+      continue;
+    }
+
+    let pts = 5;
+    if (opensAt && locksAt) {
+      pts = computeSpeedPoints({
+        submittedAt: sub.created_at,
+        opensAt,
+        locksAt,
+        minPoints: 5,
+        maxPoints: 10,
+      });
+    }
+
+    scoreRows.push({
+      prompt_id: prompt.id,
+      game_night_id: prompt.game_night_id,
+      patron_id: p.id,
+      points: pts,
+      reason: "correct_speed",
+    });
+  }
+
+  if (scoreRows.length) {
+    const ins = await supabase
+      .from("prompt_scores")
+      .upsert(scoreRows, { onConflict: "prompt_id,patron_id" });
+    if (ins.error) throw ins.error;
+  }
+
+  revalidatePath(`/host/game-night/${prompt.game_night_id}`);
+}
