@@ -51,6 +51,12 @@ export default function PatronGamePage() {
 
   const lastPromptIdRef = useRef<string | null>(null);
 
+  const [leaderboard, setLeaderboard] = useState<
+    Array<{ patron_id: string; nickname: string; total_points: number }>
+  >([]);
+  const [myTotal, setMyTotal] = useState<number>(0);
+  const [myLastPoints, setMyLastPoints] = useState<number | null>(null);
+
   const [pbp, setPbp] = useState<{
     Game?: {
       AwayTeam: string;
@@ -104,6 +110,8 @@ export default function PatronGamePage() {
     let cancelled = false;
 
     async function load() {
+      const patronId = localStorage.getItem(`patron:${code}:id`);
+
       // Current prompt = most recent
       const pr = await supabase
         .from("prompts")
@@ -144,12 +152,42 @@ export default function PatronGamePage() {
         setOptions([]);
       }
 
+      // Leaderboard + my points
+      const lb = await supabase.rpc("get_game_night_leaderboard", {
+        p_game_night_id: gnId,
+      });
+      if (!cancelled && !lb.error) {
+        const rows = (lb.data ?? []) as Array<{
+          patron_id: string;
+          nickname: string;
+          total_points: number;
+        }>;
+        setLeaderboard(rows);
+        if (patronId) {
+          const me = rows.find((r) => r.patron_id === patronId);
+          setMyTotal(me?.total_points ?? 0);
+        }
+      }
+
+      if (patronId && nextPrompt?.id) {
+        const pts = await supabase
+          .from("prompt_scores")
+          .select("points")
+          .eq("prompt_id", nextPrompt.id)
+          .eq("patron_id", patronId)
+          .maybeSingle();
+        if (!cancelled && !pts.error) {
+          setMyLastPoints(pts.data?.points ?? null);
+        }
+      } else if (!cancelled) {
+        setMyLastPoints(null);
+      }
+
       // Play-by-play (optional)
       if (sdGameId) {
-        const res = await fetch(
-          `/api/sportsdataio/replay/nba/pbp/${sdGameId}`,
-          { cache: "no-store" },
-        );
+        const res = await fetch(`/api/sportsdataio/replay/nba/pbp/${sdGameId}`, {
+          cache: "no-store",
+        });
         const json = await res.json();
         if (!cancelled) setPbp(json);
       }
@@ -162,7 +200,7 @@ export default function PatronGamePage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [gameNight?.id, gameNight?.sportsdataio_game_id, supabase]);
+  }, [code, gameNight?.id, gameNight?.sportsdataio_game_id, supabase]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -225,6 +263,28 @@ export default function PatronGamePage() {
           {gameNight.title ?? "Game Night"} — <code>{gameNight.code}</code>
         </h1>
         <div className="text-sm text-neutral-600">{gameNight.sport}</div>
+      </div>
+
+      <div className="rounded border p-4 flex items-center justify-between gap-4">
+        <div>
+          <div className="text-xs text-neutral-600">Your points</div>
+          <div className="text-2xl font-semibold">{myTotal}</div>
+          {prompt?.state === "resolved" ? (
+            <div className="text-xs text-neutral-600">
+              Last prompt: {myLastPoints ?? 0} pts
+            </div>
+          ) : null}
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-neutral-600">Leaderboard (top 5)</div>
+          <ol className="text-sm space-y-1">
+            {leaderboard.slice(0, 5).map((r, idx) => (
+              <li key={r.patron_id}>
+                {idx + 1}. {r.nickname} — {r.total_points}
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
 
       {game ? (
