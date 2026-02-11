@@ -181,6 +181,10 @@ function computeSpeedPoints(args: {
   locksAt: string;
   minPoints: number;
   maxPoints: number;
+  // Keep max points for first N seconds
+  maxWindowSeconds?: number;
+  // Start clamping to min points during last N seconds
+  minWindowSeconds?: number;
 }) {
   const t0 = new Date(args.opensAt).getTime();
   const t1 = new Date(args.locksAt).getTime();
@@ -190,12 +194,27 @@ function computeSpeedPoints(args: {
     return args.minPoints;
   }
 
-  const denom = t1 - t0;
+  const durationMs = t1 - t0;
+  if (durationMs <= 0) return args.minPoints;
+
+  const maxWindowMs = (args.maxWindowSeconds ?? 5) * 1000;
+  const minWindowMs = (args.minWindowSeconds ?? 2) * 1000;
+
+  const startDecay = t0 + maxWindowMs;
+  const endDecay = t1 - minWindowMs;
+
+  // Answered quickly → max points
+  if (ts <= startDecay) return args.maxPoints;
+
+  // Answered very late → min points
+  if (ts >= endDecay) return args.minPoints;
+
+  // Linear decay between (startDecay..endDecay)
+  const denom = endDecay - startDecay;
   if (denom <= 0) return args.minPoints;
 
-  const frac = clamp((ts - t0) / denom, 0, 1);
+  const frac = clamp((ts - startDecay) / denom, 0, 1);
   const raw = args.maxPoints - (args.maxPoints - args.minPoints) * frac;
-  // Round to nearest int
   return clamp(Math.round(raw), args.minPoints, args.maxPoints);
 }
 
