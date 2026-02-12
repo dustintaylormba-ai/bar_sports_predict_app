@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
 
-export default function AuthCallbackPage() {
+function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
@@ -18,7 +18,6 @@ export default function AuthCallbackPage() {
     let cancelled = false;
 
     async function run() {
-      // Hash params → easiest path (Supabase magic link default)
       const hash = window.location.hash?.startsWith("#")
         ? new URLSearchParams(window.location.hash.slice(1))
         : new URLSearchParams();
@@ -55,7 +54,6 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // Legacy code-flow fallback
       const code = searchParams.get("code");
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -102,5 +100,20 @@ export default function AuthCallbackPage() {
         Back to login
       </Link>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-md p-6 space-y-4">
+          <h1 className="text-2xl font-semibold">Signing you in…</h1>
+          <p className="text-sm text-neutral-600">Hold tight while we finish signing you in…</p>
+        </div>
+      }
+    >
+      <AuthCallbackInner />
+    </Suspense>
   );
 }
