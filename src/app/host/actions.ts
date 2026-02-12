@@ -158,6 +158,68 @@ export async function openPrompt(promptId: string, durationSeconds: number) {
   revalidatePath("/host");
 }
 
+export async function reopenPrompt(promptId: string, durationSeconds: number) {
+  const { supabase, user } = await requireAuthedSupabase();
+
+  const now = new Date();
+  const locksAt = new Date(now.getTime() + durationSeconds * 1000);
+
+  // Reopen resets timing and clears resolution/scores for that prompt.
+  const del1 = await supabase.from("prompt_resolutions").delete().eq("prompt_id", promptId);
+  if (del1.error) throw del1.error;
+
+  const del2 = await supabase.from("prompt_scores").delete().eq("prompt_id", promptId);
+  if (del2.error) throw del2.error;
+
+  const { error } = await supabase
+    .from("prompts")
+    .update({
+      state: "open",
+      opens_at: now.toISOString(),
+      locks_at: locksAt.toISOString(),
+      resolved_at: null,
+      created_by_user_id: user.id,
+    })
+    .eq("id", promptId);
+
+  if (error) throw error;
+
+  revalidatePath("/host");
+}
+
+export async function voidPrompt(promptId: string) {
+  const { supabase } = await requireAuthedSupabase();
+
+  // Mark void; clear resolution + scores.
+  const del1 = await supabase.from("prompt_resolutions").delete().eq("prompt_id", promptId);
+  if (del1.error) throw del1.error;
+
+  const del2 = await supabase.from("prompt_scores").delete().eq("prompt_id", promptId);
+  if (del2.error) throw del2.error;
+
+  const { error } = await supabase
+    .from("prompts")
+    .update({ state: "void", resolved_at: new Date().toISOString() })
+    .eq("id", promptId);
+
+  if (error) throw error;
+
+  revalidatePath("/host");
+}
+
+export async function endGameNight(gameNightId: string) {
+  const { supabase, user } = await requireAuthedSupabase();
+
+  const { error } = await supabase
+    .from("game_nights")
+    .update({ status: "ended", ended_at: new Date().toISOString(), owner_user_id: user.id })
+    .eq("id", gameNightId);
+
+  if (error) throw error;
+
+  revalidatePath("/host");
+}
+
 export async function lockPrompt(promptId: string) {
   const { supabase } = await requireAuthedSupabase();
 
@@ -234,6 +296,15 @@ export async function resolvePrompt(params: {
   if (promptRes.error) throw promptRes.error;
   const prompt = promptRes.data;
 
+  // If still open, lock first (so scoring uses a stable locks_at).
+  if (prompt.state === "open") {
+    const { error: lockErr } = await supabase
+      .from("prompts")
+      .update({ state: "locked" })
+      .eq("id", prompt.id);
+    if (lockErr) throw lockErr;
+  }
+
   // Upsert resolution record (unique on prompt_id)
   const resInsert = await supabase.from("prompt_resolutions").upsert(
     {
@@ -274,8 +345,16 @@ export async function resolvePrompt(params: {
     subsByPatron.set(s.patron_id, { option_id: s.option_id, created_at: s.created_at });
   }
 
-  const opensAt = prompt.opens_at;
-  const locksAt = prompt.locks_at;
+  // Reload opens/locks after potential lock.
+  const freshPrompt = await supabase
+    .from("prompts")
+    .select("opens_at,locks_at")
+    .eq("id", prompt.id)
+    .single();
+  if (freshPrompt.error) throw freshPrompt.error;
+
+  const opensAt = freshPrompt.data.opens_at;
+  const locksAt = freshPrompt.data.locks_at;
 
   const scoreRows: Array<{
     prompt_id: string;

@@ -1,6 +1,14 @@
 import Link from "next/link";
 
-import { createPrompt, lockPrompt, openPrompt, resolvePrompt } from "@/app/host/actions";
+import {
+  createPrompt,
+  endGameNight,
+  lockPrompt,
+  openPrompt,
+  reopenPrompt,
+  resolvePrompt,
+  voidPrompt,
+} from "@/app/host/actions";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function HostGameNightPage({
@@ -115,6 +123,13 @@ export default async function HostGameNightPage({
     await openPrompt(promptId, duration);
   }
 
+  async function reopen(formData: FormData) {
+    "use server";
+    const promptId = String(formData.get("promptId") ?? "");
+    const duration = Number(String(formData.get("duration") ?? "30"));
+    await reopenPrompt(promptId, duration);
+  }
+
   async function lock(formData: FormData) {
     "use server";
     const promptId = String(formData.get("promptId") ?? "");
@@ -126,6 +141,17 @@ export default async function HostGameNightPage({
     const promptId = String(formData.get("promptId") ?? "");
     const correctOptionId = String(formData.get("correctOptionId") ?? "");
     await resolvePrompt({ promptId, correctOptionId });
+  }
+
+  async function voidIt(formData: FormData) {
+    "use server";
+    const promptId = String(formData.get("promptId") ?? "");
+    await voidPrompt(promptId);
+  }
+
+  async function endNight() {
+    "use server";
+    await endGameNight(gameNightId);
   }
 
   return (
@@ -219,12 +245,39 @@ export default async function HostGameNightPage({
                 </button>
               </form>
 
-              <form action={lock}>
+              <form action={reopen} className="flex items-end gap-2">
                 <input type="hidden" name="promptId" value={current.id} />
-                <button className="rounded bg-neutral-800 px-3 py-2 text-white">
-                  Lock
+                <div className="flex-1">
+                  <label className="block text-xs text-neutral-600">
+                    Reopen duration (sec)
+                  </label>
+                  <input
+                    name="duration"
+                    defaultValue={30}
+                    inputMode="numeric"
+                    className="w-full rounded border px-3 py-2"
+                  />
+                </div>
+                <button className="rounded bg-indigo-600 px-3 py-2 text-white">
+                  Reopen
                 </button>
               </form>
+
+              <div className="flex flex-wrap gap-2">
+                <form action={lock}>
+                  <input type="hidden" name="promptId" value={current.id} />
+                  <button className="rounded bg-neutral-800 px-3 py-2 text-white">
+                    Lock
+                  </button>
+                </form>
+
+                <form action={voidIt}>
+                  <input type="hidden" name="promptId" value={current.id} />
+                  <button className="rounded bg-red-600 px-3 py-2 text-white">
+                    Void
+                  </button>
+                </form>
+              </div>
 
               {currentOptions?.data?.length ? (
                 <form action={resolve} className="space-y-2">
@@ -253,6 +306,18 @@ export default async function HostGameNightPage({
             <div className="text-sm text-neutral-600">No prompts yet.</div>
           )}
         </div>
+      </div>
+
+      <div className="rounded border p-4 space-y-3">
+        <div className="font-semibold">Game night controls</div>
+        <p className="text-sm text-neutral-600">
+          Ending the night locks out new prompts and freezes patron scoring.
+        </p>
+        <form action={endNight}>
+          <button className="rounded bg-rose-700 px-3 py-2 text-white">
+            End game night
+          </button>
+        </form>
       </div>
 
       <div className="space-y-2">
