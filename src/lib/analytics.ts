@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { serviceSupabase } from "@/lib/supabase/service";
+import { getServiceSupabase } from "@/lib/supabase/service";
 
 type AnalyticPayload = Record<string, unknown> | null;
 
@@ -12,6 +12,16 @@ type LogEventParams = {
   client?: SupabaseClient;
 };
 
+function getClient(client?: SupabaseClient) {
+  if (client) return client;
+  try {
+    return getServiceSupabase();
+  } catch (err) {
+    console.warn("Service Supabase client unavailable; skipping analytics log", err);
+    return null;
+  }
+}
+
 export async function logAnalyticEvent({
   kind,
   userId,
@@ -19,7 +29,8 @@ export async function logAnalyticEvent({
   payload,
   client,
 }: LogEventParams) {
-  const supabase = client ?? serviceSupabase;
+  const supabase = getClient(client);
+  if (!supabase) return;
   await supabase.from("analytic_events").insert({
     kind,
     user_id: userId ?? null,
@@ -37,7 +48,9 @@ type SportsDataIOMetricParams = {
 };
 
 export async function logSportsDataIOMetric(params: SportsDataIOMetricParams) {
-  await serviceSupabase.from("sportsdataio_metrics").insert({
+  const supabase = getClient();
+  if (!supabase) return;
+  await supabase.from("sportsdataio_metrics").insert({
     game_id: params.gameId ? String(params.gameId) : null,
     source: params.source,
     status: params.status,
