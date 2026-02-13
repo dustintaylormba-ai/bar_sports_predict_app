@@ -12,6 +12,7 @@ type Prompt = {
   question: string;
   state: string;
   locks_at: string | null;
+  opens_at: string | null;
   over_under_line: number | null;
 };
 
@@ -35,6 +36,41 @@ const SPORTS_DATA_IO_PBP_BASE_PATH =
   SPORTS_DATA_IO_SOURCE === "live"
     ? "/api/sportsdataio/live/nba/pbp"
     : "/api/sportsdataio/replay/nba/pbp";
+
+function formatTimeRemaining(ms: number): string {
+  const clamped = Math.max(ms, 0);
+  const totalSeconds = Math.floor(clamped / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function computePotentialPoints(
+  opensAtIso: string | null,
+  locksAtIso: string | null,
+  now: Date,
+): number | null {
+  if (!opensAtIso || !locksAtIso) return null;
+  const opensAt = new Date(opensAtIso).getTime();
+  const locksAt = new Date(locksAtIso).getTime();
+  const nowMs = now.getTime();
+  if (!Number.isFinite(opensAt) || !Number.isFinite(locksAt)) return null;
+  const minPoints = 5;
+  const maxPoints = 10;
+  const maxWindowMs = 5 * 1000;
+  const minWindowMs = 2 * 1000;
+  const startDecay = opensAt + maxWindowMs;
+  const endDecay = locksAt - minWindowMs;
+
+  if (nowMs <= startDecay) return maxPoints;
+  if (nowMs >= endDecay) return minPoints;
+
+  const denom = endDecay - startDecay;
+  if (denom <= 0) return minPoints;
+  const frac = Math.min(Math.max((nowMs - startDecay) / denom, 0), 1);
+  const raw = maxPoints - (maxPoints - minPoints) * frac;
+  return Math.round(raw);
+}
 
 export default function PatronGamePage() {
   const supabase = useMemo(() => createClient(), []);
@@ -85,6 +121,8 @@ export default function PatronGamePage() {
     };
     Plays?: Play[];
   } | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
+  const [potentialPoints, setPotentialPoints] = useState<number | null>(null);
 
   useEffect(() => {
     const storedId = localStorage.getItem(`patron:${code}:id`);
@@ -143,7 +181,7 @@ export default function PatronGamePage() {
       // Current prompt = most recent
       const pr = await supabase
         .from("prompts")
-        .select("id,kind,question,state,locks_at,over_under_line,created_at")
+        .select("id,kind,question,state,locks_at,opens_at,over_under_line,created_at")
         .eq("game_night_id", gnId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -229,6 +267,25 @@ export default function PatronGamePage() {
       clearInterval(id);
     };
   }, [code, gameNight?.id, gameNight?.sportsdataio_game_id, patronSession?.id, supabase]);
+
+  useEffect(() => {
+    if (!prompt || prompt.state !== "open" || !prompt.locks_at) {
+      setTimeRemaining(null);
+      setPotentialPoints(null);
+      return;
+    }
+
+    const update = () => {
+      const now = new Date();
+      const locksMs = new Date(prompt.locks_at!).getTime();
+      setTimeRemaining(formatTimeRemaining(locksMs - now.getTime()));
+      setPotentialPoints(computePotentialPoints(prompt.opens_at, prompt.locks_at, now));
+    };
+
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [prompt?.id, prompt?.state, prompt?.locks_at, prompt?.opens_at]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -363,6 +420,27 @@ export default function PatronGamePage() {
 
             {prompt.kind === "over_under" ? (
               <div className="text-sm">Line: {prompt.over_under_line}</div>
+            ) : null}
+
+            {prompt.state === "open" && (timeRemaining || potentialPoints) ? (
+              <div className="rounded border px-3 py-2 text-sm flex flex-wrap items-center gap-4 bg-neutral-50">
+                {timeRemaining ? (
+                  <div>
+                    Time remaining: <span className="font-semibold">{timeRemaining}</span>
+                  </div>
+                ) : null}
+                {potentialPoints ? (
+                  <div>
+                    Answer now for <span className="font-semibold">{potentialPoints} pts</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {prompt.state === "locked" ? (
+              <div className="rounded border px-3 py-2 text-sm bg-amber-50 text-amber-900">
+                Prompt locked — waiting for host to resolve.
+              </div>
             ) : null}
 
             <form onSubmit={submit} className="space-y-2">

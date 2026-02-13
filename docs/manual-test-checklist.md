@@ -32,9 +32,10 @@ These are the flows I walked through (or simulated via server actions) after tod
    - Clear `localStorage` keys `patron:<code>:*`, load `/g/<code>`.
    - “Session expired” state should show with a button to re-join.
 
-8. **Guest: submission**
-   - With an open prompt, select an option and submit.
-   - Button should flip to “Submitted” and prevent duplicates. Confirm errors surface if no option selected.
+8. **Guest: submission + timer**
+   - With an open prompt, confirm the countdown + “Answer now for X pts” banner updates every second and hits 0:00 on lock.
+   - Submit an option. Button should flip to “Submitted” and prevent duplicates. Confirm errors surface if no option selected.
+   - When host locks the prompt, patrons should see the “Prompt locked — waiting for host to resolve” banner.
 
 9. **Safety net**
    - `npm run build` passes locally to catch type errors.
