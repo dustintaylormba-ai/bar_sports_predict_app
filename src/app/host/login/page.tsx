@@ -22,6 +22,7 @@ export default function HostLoginPage() {
       email,
       options: {
         emailRedirectTo: `${origin}/auth/callback`,
+        flowType: "implicit",
       },
     });
 
