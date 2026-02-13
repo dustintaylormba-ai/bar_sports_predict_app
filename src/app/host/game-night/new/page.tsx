@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { createGameNight } from "@/app/host/actions";
 import { createClient } from "@/lib/supabase/server";
@@ -64,13 +65,15 @@ export default async function NewGameNightPage() {
     const sportsdataioGameIdRaw = String(formData.get("sportsdataioGameId") ?? "").trim();
     const sportsdataioGameId = sportsdataioGameIdRaw ? Number(sportsdataioGameIdRaw) : undefined;
 
-    await createGameNight({
+    const created = await createGameNight({
       barId: bar!.id,
       title,
       sport,
       code,
       sportsdataioGameId,
     });
+
+    redirect(`/host/game-night/${created.id}`);
   }
 
   return (
