@@ -28,6 +28,14 @@ type Play = {
   HomeTeamScore: number;
 };
 
+const SPORTS_DATA_IO_SOURCE =
+  process.env.NEXT_PUBLIC_SPORTSDATAIO_SOURCE === "live" ? "live" : "replay";
+
+const SPORTS_DATA_IO_PBP_BASE_PATH =
+  SPORTS_DATA_IO_SOURCE === "live"
+    ? "/api/sportsdataio/live/nba/pbp"
+    : "/api/sportsdataio/replay/nba/pbp";
+
 export default function PatronGamePage() {
   const supabase = useMemo(() => createClient(), []);
   const params = useParams<{ code: string }>();
@@ -185,7 +193,7 @@ export default function PatronGamePage() {
 
       // Play-by-play (optional)
       if (sdGameId) {
-        const res = await fetch(`/api/sportsdataio/replay/nba/pbp/${sdGameId}`, {
+        const res = await fetch(`${SPORTS_DATA_IO_PBP_BASE_PATH}/${sdGameId}`, {
           cache: "no-store",
         });
         const json = await res.json();

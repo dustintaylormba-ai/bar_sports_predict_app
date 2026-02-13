@@ -21,7 +21,8 @@ cp .env.example .env.local
 
 Fill in:
 - `SPORTSDATAIO_API_KEY`
-- (later) Supabase keys
+- `NEXT_PUBLIC_SPORTSDATAIO_SOURCE` (`replay` or `live`; defaults to `replay`)
+- Supabase keys
 
 3) Run dev server
 ```bash
@@ -30,13 +31,14 @@ npm run dev
 
 Open http://localhost:3000
 
-## SportsDataIO Replay smoke test
+## SportsDataIO endpoints
 
-Once `SPORTSDATAIO_API_KEY` is set, hit:
+The API key stays server-side. Depending on `NEXT_PUBLIC_SPORTSDATAIO_SOURCE`, the patron client will call one of these proxy routes:
 
-- `GET /api/sportsdataio/replay/nba/pbp/22433`
+- Replay (default): `GET /api/sportsdataio/replay/nba/pbp/:gameId`
+- Live: `GET /api/sportsdataio/live/nba/pbp/:gameId`
 
-This proxies SportsDataIO Replay play-by-play and keeps the API key server-side.
+The proxy selects either `SPORTSDATAIO_REPLAY_BASE_URL` or `SPORTSDATAIO_LIVE_BASE_URL` under the hood.
 
 ## Notes
 - Don’t paste API keys into Discord or issues—even if it “feels private.” Rotate immediately if leaked.
