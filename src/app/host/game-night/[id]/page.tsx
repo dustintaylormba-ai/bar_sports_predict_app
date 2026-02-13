@@ -12,6 +12,7 @@ import {
 } from "@/app/host/actions";
 import { createClient } from "@/lib/supabase/server";
 import { ConfirmEndGameNightButton } from "@/components/confirm-end-game-night-button";
+import { ConfirmButton } from "@/components/confirm-button";
 
 export default async function HostGameNightPage({
   params,
@@ -276,9 +277,12 @@ export default async function HostGameNightPage({
 
                 <form action={voidIt}>
                   <input type="hidden" name="promptId" value={current.id} />
-                  <button className="rounded bg-red-600 px-3 py-2 text-white">
+                  <ConfirmButton
+                    message="Void this prompt? This removes submissions and scores for it."
+                    className="rounded bg-red-600 px-3 py-2 text-white"
+                  >
                     Void
-                  </button>
+                  </ConfirmButton>
                 </form>
               </div>
 
@@ -299,9 +303,12 @@ export default async function HostGameNightPage({
                       </option>
                     ))}
                   </select>
-                  <button className="rounded bg-green-700 px-3 py-2 text-white">
+                  <ConfirmButton
+                    message="Resolve this prompt and score patrons? This cannot be undone without reopening."
+                    className="rounded bg-green-700 px-3 py-2 text-white"
+                  >
                     Resolve + score
-                  </button>
+                  </ConfirmButton>
                 </form>
               ) : null}
             </div>
