@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { normalizeGameCode } from "@/lib/codes";
 import { createClient } from "@/lib/supabase/client";
@@ -39,6 +39,7 @@ const SPORTS_DATA_IO_PBP_BASE_PATH =
 export default function PatronGamePage() {
   const supabase = useMemo(() => createClient(), []);
   const params = useParams<{ code: string }>();
+  const router = useRouter();
   const code = normalizeGameCode(params?.code);
 
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,11 @@ export default function PatronGamePage() {
 
   const [selectedOptionId, setSelectedOptionId] = useState<string>("");
   const [submitted, setSubmitted] = useState(false);
+  const [patronSession, setPatronSession] = useState<{
+    id: string;
+    nickname: string;
+  } | null>(null);
+  const [missingSession, setMissingSession] = useState(false);
 
   const lastPromptIdRef = useRef<string | null>(null);
 
@@ -79,6 +85,20 @@ export default function PatronGamePage() {
     };
     Plays?: Play[];
   } | null>(null);
+
+  useEffect(() => {
+    const storedId = localStorage.getItem(`patron:${code}:id`);
+    const storedNickname = localStorage.getItem(`patron:${code}:nickname`);
+
+    if (!storedId) {
+      setMissingSession(true);
+      setPatronSession(null);
+      return;
+    }
+
+    setMissingSession(false);
+    setPatronSession({ id: storedId, nickname: storedNickname ?? "" });
+  }, [code]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +138,7 @@ export default function PatronGamePage() {
     let cancelled = false;
 
     async function load() {
-      const patronId = localStorage.getItem(`patron:${code}:id`);
+      const patronId = patronSession?.id ?? null;
 
       // Current prompt = most recent
       const pr = await supabase
@@ -208,7 +228,7 @@ export default function PatronGamePage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [code, gameNight?.id, gameNight?.sportsdataio_game_id, supabase]);
+  }, [code, gameNight?.id, gameNight?.sportsdataio_game_id, patronSession?.id, supabase]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -216,7 +236,7 @@ export default function PatronGamePage() {
 
     if (!prompt?.id) return;
 
-    const patronId = localStorage.getItem(`patron:${code}:id`);
+    const patronId = patronSession?.id ?? null;
     if (!patronId) {
       setError("Missing patron session. Re-join the game.");
       return;
@@ -249,6 +269,24 @@ export default function PatronGamePage() {
 
   if (loading) return <div className="p-6">Loading…</div>;
 
+  if (missingSession) {
+    return (
+      <div className="p-6 space-y-3">
+        <div className="text-xl font-semibold">Session expired</div>
+        <div className="text-sm text-neutral-600">
+          We couldn't find your patron session for code <code>{code}</code>. Re-join to keep
+          playing.
+        </div>
+        <button
+          className="rounded bg-black px-4 py-2 text-white"
+          onClick={() => router.push(`/join/${code}`)}
+        >
+          Re-join game
+        </button>
+      </div>
+    );
+  }
+
   if (!gameNight) {
     return (
       <div className="p-6">
@@ -277,6 +315,11 @@ export default function PatronGamePage() {
         <div>
           <div className="text-xs text-neutral-600">Your points</div>
           <div className="text-2xl font-semibold">{myTotal}</div>
+          {patronSession?.nickname ? (
+            <div className="text-xs text-neutral-600">
+              Playing as {patronSession.nickname}
+            </div>
+          ) : null}
           {prompt?.state === "resolved" ? (
             <div className="text-xs text-neutral-600">
               Last prompt: {myLastPoints ?? 0} pts

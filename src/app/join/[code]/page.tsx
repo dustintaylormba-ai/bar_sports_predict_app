@@ -14,6 +14,7 @@ export default function JoinPage() {
 
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gameNight, setGameNight] = useState<{
     id: string;
@@ -54,10 +55,17 @@ export default function JoinPage() {
   async function join(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setJoining(true);
 
     const nn = nickname.trim();
-    if (!nn) return;
-    if (!gameNight?.id) return;
+    if (!nn) {
+      setJoining(false);
+      return;
+    }
+    if (!gameNight?.id) {
+      setJoining(false);
+      return;
+    }
 
     const { data, error: err } = await supabase
       .from("patrons")
@@ -67,6 +75,7 @@ export default function JoinPage() {
 
     if (err) {
       setError(err.message);
+      setJoining(false);
       return;
     }
 
@@ -74,6 +83,7 @@ export default function JoinPage() {
     localStorage.setItem(`patron:${code}:nickname`, nn);
 
     router.push(`/g/${code}`);
+    setJoining(false);
   }
 
   if (loading) {
@@ -111,7 +121,12 @@ export default function JoinPage() {
           required
         />
 
-        <button className="rounded bg-black px-4 py-2 text-white">Join</button>
+        <button
+          className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+          disabled={joining}
+        >
+          {joining ? "Joining…" : "Join"}
+        </button>
 
         {error ? <div className="text-sm text-red-700">{error}</div> : null}
       </form>
