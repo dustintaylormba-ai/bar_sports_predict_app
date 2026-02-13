@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { logAnalyticEvent } from "@/lib/analytics";
 import { normalizeGameCode } from "@/lib/codes";
 import { createClient } from "@/lib/supabase/server";
 
@@ -77,6 +78,16 @@ export async function createGameNight(params: {
 
   if (insert.error) throw insert.error;
 
+  await logAnalyticEvent({
+    kind: "game_night_created",
+    userId: user.id,
+    gameNightId: insert.data.id,
+    payload: {
+      code,
+      sport: params.sport ?? "NBA",
+    },
+  }).catch((err) => console.error("Failed to log game_night_created", err));
+
   revalidatePath("/host");
   return insert.data;
 }
@@ -133,6 +144,18 @@ export async function createPrompt(params: {
     if (error) throw error;
   }
 
+  await logAnalyticEvent({
+    kind: "prompt_created",
+    userId: user.id,
+    gameNightId: params.gameNightId,
+    payload: {
+      promptId: prompt.id,
+      kind: params.kind,
+      questionLength: question.length,
+      optionsCount: params.kind === "multiple_choice" ? (params.options ?? []).length : 2,
+    },
+  }).catch((err) => console.error("Failed to log prompt_created", err));
+
   revalidatePath(`/host/game-night/${params.gameNightId}`);
   return prompt;
 }
@@ -154,6 +177,12 @@ export async function openPrompt(promptId: string, durationSeconds: number) {
     .eq("id", promptId);
 
   if (error) throw error;
+
+  await logAnalyticEvent({
+    kind: "prompt_opened",
+    userId: user.id,
+    payload: { promptId, durationSeconds },
+  }).catch((err) => console.error("Failed to log prompt_opened", err));
 
   revalidatePath("/host");
 }
@@ -184,11 +213,17 @@ export async function reopenPrompt(promptId: string, durationSeconds: number) {
 
   if (error) throw error;
 
+  await logAnalyticEvent({
+    kind: "prompt_reopened",
+    userId: user.id,
+    payload: { promptId, durationSeconds },
+  }).catch((err) => console.error("Failed to log prompt_reopened", err));
+
   revalidatePath("/host");
 }
 
 export async function voidPrompt(promptId: string) {
-  const { supabase } = await requireAuthedSupabase();
+  const { supabase, user } = await requireAuthedSupabase();
 
   // Mark void; clear resolution + scores.
   const del1 = await supabase.from("prompt_resolutions").delete().eq("prompt_id", promptId);
@@ -204,6 +239,12 @@ export async function voidPrompt(promptId: string) {
 
   if (error) throw error;
 
+  await logAnalyticEvent({
+    kind: "prompt_voided",
+    userId: user.id,
+    payload: { promptId },
+  }).catch((err) => console.error("Failed to log prompt_voided", err));
+
   revalidatePath("/host");
 }
 
@@ -217,11 +258,17 @@ export async function endGameNight(gameNightId: string) {
 
   if (error) throw error;
 
+  await logAnalyticEvent({
+    kind: "game_night_ended",
+    userId: user.id,
+    gameNightId,
+  }).catch((err) => console.error("Failed to log game_night_ended", err));
+
   revalidatePath("/host");
 }
 
 export async function lockPrompt(promptId: string) {
-  const { supabase } = await requireAuthedSupabase();
+  const { supabase, user } = await requireAuthedSupabase();
 
   const { error } = await supabase
     .from("prompts")
@@ -229,6 +276,12 @@ export async function lockPrompt(promptId: string) {
     .eq("id", promptId);
 
   if (error) throw error;
+
+  await logAnalyticEvent({
+    kind: "prompt_locked",
+    userId: user.id,
+    payload: { promptId },
+  }).catch((err) => console.error("Failed to log prompt_locked", err));
 
   revalidatePath("/host");
 }
@@ -410,6 +463,17 @@ export async function resolvePrompt(params: {
       .upsert(scoreRows, { onConflict: "prompt_id,patron_id" });
     if (ins.error) throw ins.error;
   }
+
+  await logAnalyticEvent({
+    kind: "prompt_resolved",
+    userId: user.id,
+    gameNightId: prompt.game_night_id,
+    payload: {
+      promptId: prompt.id,
+      totalSubmissions: subsRes.data?.length ?? 0,
+      scoredCount: scoreRows.length,
+    },
+  }).catch((err) => console.error("Failed to log prompt_resolved", err));
 
   revalidatePath(`/host/game-night/${prompt.game_night_id}`);
 }
