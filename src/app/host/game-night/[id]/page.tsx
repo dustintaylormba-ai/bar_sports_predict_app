@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import {
   createPrompt,
@@ -10,6 +11,7 @@ import {
   voidPrompt,
 } from "@/app/host/actions";
 import { createClient } from "@/lib/supabase/server";
+import { ConfirmEndGameNightButton } from "@/components/confirm-end-game-night-button";
 
 export default async function HostGameNightPage({
   params,
@@ -152,6 +154,7 @@ export default async function HostGameNightPage({
   async function endNight() {
     "use server";
     await endGameNight(gameNightId);
+    redirect("/host");
   }
 
   return (
@@ -313,11 +316,7 @@ export default async function HostGameNightPage({
         <p className="text-sm text-neutral-600">
           Ending the night locks out new prompts and freezes patron scoring.
         </p>
-        <form action={endNight}>
-          <button className="rounded bg-rose-700 px-3 py-2 text-white">
-            End game night
-          </button>
-        </form>
+        <ConfirmEndGameNightButton action={endNight} />
       </div>
 
       <div className="space-y-2">
