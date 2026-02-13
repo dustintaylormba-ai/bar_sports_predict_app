@@ -322,6 +322,8 @@ export default function PatronGamePage() {
     }
 
     setSubmitted(true);
+    // lightweight toast for now
+    setError(null);
   }
 
   if (loading) return <div className="p-6">Loading…</div>;
@@ -465,6 +467,10 @@ export default function PatronGamePage() {
               >
                 {submitted ? "Submitted" : "Submit"}
               </button>
+
+              {submitted ? (
+                <div className="text-sm text-green-700">Answer received! Hang tight.</div>
+              ) : null}
 
               {error ? <div className="text-sm text-red-700">{error}</div> : null}
             </form>

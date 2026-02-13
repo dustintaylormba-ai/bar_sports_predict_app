@@ -11,6 +11,7 @@ import {
   voidPrompt,
 } from "@/app/host/actions";
 import { createClient } from "@/lib/supabase/server";
+import { CountdownDisplay } from "@/components/countdown-display";
 import { ConfirmEndGameNightButton } from "@/components/confirm-end-game-night-button";
 import { ConfirmButton } from "@/components/confirm-button";
 
@@ -74,7 +75,7 @@ export default async function HostGameNightPage({
 
   const promptsRes = await supabase
     .from("prompts")
-    .select("id,kind,question,state,locks_at,created_at,over_under_line")
+    .select("id,kind,question,state,locks_at,opens_at,created_at,over_under_line")
     .eq("game_night_id", gameNightId)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -173,6 +174,17 @@ export default async function HostGameNightPage({
         <div className="text-sm">
           Patron join link: <code>/join/{gameNight.code}</code>
         </div>
+      </div>
+
+      <div className="rounded border p-4 space-y-2">
+        <div className="font-semibold">Prompt timer</div>
+        {current?.state === "open" && current.locks_at ? (
+          <CountdownDisplay locksAt={current.locks_at} opensAt={current.opens_at ?? null} />
+        ) : current?.state === "locked" ? (
+          <div className="text-sm text-neutral-600">Prompt locked — ready to resolve.</div>
+        ) : (
+          <div className="text-sm text-neutral-600">No active prompt.</div>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
