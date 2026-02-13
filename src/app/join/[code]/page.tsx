@@ -82,6 +82,13 @@ export default function JoinPage() {
     localStorage.setItem(`patron:${code}:id`, data.id);
     localStorage.setItem(`patron:${code}:nickname`, nn);
 
+    sendJoinAnalytics({
+      gameNightId: gameNight.id,
+      patronId: data.id,
+      nickname: nn,
+      joinCode: gameNight.code,
+    });
+
     router.push(`/g/${code}`);
     setJoining(false);
   }
@@ -132,4 +139,47 @@ export default function JoinPage() {
       </form>
     </div>
   );
+}
+
+function sendJoinAnalytics({
+  gameNightId,
+  patronId,
+  nickname,
+  joinCode,
+}: {
+  gameNightId: string;
+  patronId: string;
+  nickname: string;
+  joinCode: string;
+}) {
+  if (typeof window === "undefined") return;
+  const client = {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    language: navigator.language,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    screen: {
+      width: window.screen?.width ?? null,
+      height: window.screen?.height ?? null,
+      pixelRatio: window.devicePixelRatio ?? null,
+    },
+  };
+
+  const payload = {
+    gameNightId,
+    patronId,
+    nickname,
+    joinCode,
+    client,
+    joinedAt: new Date().toISOString(),
+  };
+
+  void fetch("/api/analytics/patron-join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => {
+    // Fire and forget; don't block user flow.
+  });
 }
