@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { normalizeGameCode } from "@/lib/codes";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/toast-provider";
 
 type Prompt = {
   id: string;
@@ -76,6 +77,7 @@ export default function PatronGamePage() {
   const supabase = useMemo(() => createClient(), []);
   const params = useParams<{ code: string }>();
   const router = useRouter();
+  const { toast } = useToast();
   const code = normalizeGameCode(params?.code);
 
   const [loading, setLoading] = useState(true);
@@ -309,6 +311,7 @@ export default function PatronGamePage() {
       return;
     }
 
+    const pointsOnSubmit = potentialPoints;
     const insert = await supabase.from("submissions").insert({
       prompt_id: prompt.id,
       patron_id: patronId,
@@ -317,13 +320,33 @@ export default function PatronGamePage() {
     });
 
     if (insert.error) {
-      setError(insert.error.message);
+      const message = insert.error.message;
+      setError(message);
+      toast({
+        title: "Submission failed",
+        description: message,
+        variant: "error",
+      });
       return;
     }
 
     setSubmitted(true);
-    // lightweight toast for now
     setError(null);
+    toast({
+      title: "Answer sent",
+      description:
+        pointsOnSubmit && pointsOnSubmit > 0
+          ? `Locked in for up to ${pointsOnSubmit} pts`
+          : "Hang tight while the host scores it",
+      variant: "success",
+      action: {
+        label: "View leaderboard",
+        onClick: () => {
+          const leaderboardEl = document.getElementById("leaderboard-section");
+          leaderboardEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+        },
+      },
+    });
   }
 
   if (loading) return <div className="p-6">Loading…</div>;
@@ -370,7 +393,10 @@ export default function PatronGamePage() {
         <div className="text-sm text-neutral-600">{gameNight.sport}</div>
       </div>
 
-      <div className="rounded border p-4 flex items-center justify-between gap-4">
+      <div
+        className="rounded border p-4 flex items-center justify-between gap-4"
+        id="leaderboard-section"
+      >
         <div>
           <div className="text-xs text-neutral-600">Your points</div>
           <div className="text-2xl font-semibold">{myTotal}</div>

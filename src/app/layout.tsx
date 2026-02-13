@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthHashRedirect } from "@/components/auth-hash-redirect";
+import { ToastProvider } from "@/components/toast-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,8 +29,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthHashRedirect />
-        {children}
+        <ToastProvider>
+          <AuthHashRedirect />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

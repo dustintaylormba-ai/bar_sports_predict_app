@@ -2,12 +2,15 @@
 
 import { useTransition } from "react";
 
+import { useToast } from "@/components/toast-provider";
+
 export function ConfirmEndGameNightButton({
   action,
 }: {
   action: () => Promise<void>;
 }) {
   const [isPending, startTransition] = useTransition();
+  const { toast } = useToast();
 
   function handleClick() {
     const confirmed = window.confirm(
@@ -16,7 +19,21 @@ export function ConfirmEndGameNightButton({
     if (!confirmed) return;
 
     startTransition(() => {
-      void action();
+      action()
+        .then(() =>
+          toast({
+            title: "Game night ended",
+            description: "Host dashboard updated",
+            variant: "success",
+          }),
+        )
+        .catch((err) =>
+          toast({
+            title: "Failed to end game night",
+            description: err.message,
+            variant: "error",
+          }),
+        );
     });
   }
 
