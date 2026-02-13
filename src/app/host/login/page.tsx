@@ -22,6 +22,7 @@ export default function HostLoginPage() {
       email,
       options: {
         emailRedirectTo: `${origin}/auth/callback`,
+        // @ts-expect-error flowType is available in supabase-js but missing from our types
         flowType: "implicit",
       },
     });
