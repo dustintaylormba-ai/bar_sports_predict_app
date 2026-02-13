@@ -13,8 +13,7 @@ export default async function HostHomePage() {
           Supabase environment variables are not configured.
         </p>
         <p className="text-sm text-neutral-600">
-          Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-          <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in <code>.env.local</code>.
+          Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in <code>.env.local</code>.
         </p>
         <Link className="underline" href="/">
           Home
@@ -57,6 +56,35 @@ export default async function HostHomePage() {
         .limit(20)
     : null;
 
+  const latestGameNight = gameNights?.data?.[0] ?? null;
+
+  const latestPrompt = latestGameNight
+    ? await supabase
+        .from("prompts")
+        .select("id,question,state,kind,locks_at,created_at")
+        .eq("game_night_id", latestGameNight.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : null;
+
+  function promptStatusSummary() {
+    if (!latestPrompt?.data) return "No prompts yet.";
+    const prompt = latestPrompt.data;
+    const locksAt = prompt.locks_at ? new Date(prompt.locks_at).toLocaleTimeString() : null;
+    const stateLabel = prompt.state.replace(/_/g, " ");
+    if (prompt.state === "open" && locksAt) {
+      return `Current prompt is open until ${locksAt}.`;
+    }
+    if (prompt.state === "locked") {
+      return "Current prompt is locked—ready to resolve.";
+    }
+    if (prompt.state === "resolved") {
+      return "Last prompt is resolved—create the next one.";
+    }
+    return `Latest prompt is ${stateLabel}.`;
+  }
+
   return (
     <div className="mx-auto max-w-3xl p-6 space-y-6">
       <div className="space-y-1">
@@ -83,6 +111,29 @@ export default async function HostHomePage() {
           </Link>
         </div>
       )}
+
+      {latestGameNight ? (
+        <div className="rounded border p-4 space-y-2 bg-neutral-50">
+          <div className="text-xs uppercase tracking-wide text-neutral-600">Next steps</div>
+          <div className="font-semibold">
+            {latestGameNight.title ?? "Game Night"} — <code>{latestGameNight.code}</code>
+          </div>
+          <div className="text-sm text-neutral-700">{promptStatusSummary()}</div>
+          {latestPrompt?.data ? (
+            <div className="text-sm text-neutral-500">
+              {latestPrompt.data.kind} — {latestPrompt.data.state}
+            </div>
+          ) : null}
+          <div>
+            <Link
+              className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 underline"
+              href={`/host/game-night/${latestGameNight.id}`}
+            >
+              Open host controls →
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {gameNights?.data?.length ? (
         <div className="space-y-2">
